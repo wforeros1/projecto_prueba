@@ -1,20 +1,20 @@
-name: 'Bootstrap: Deploy and Configure Nexus'
+name: 'Bootstrap: Deploy Nexus Container'
 
 on:
   push:
     branches:
-      - develop
+      - main
 
 jobs:
   bootstrap:
-    name: Prepare EC2, Deploy and Configure Nexus
+    name: Prepare EC2 and Deploy Nexus
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Install Docker and Start Nexus
+      - name: Install Docker and create folders on EC2
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -29,7 +29,7 @@ jobs:
             sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
             sudo chmod +x /usr/local/bin/docker-compose
             mkdir -p ~/app
-      
+
       - name: Copy Docker Compose to EC2
         uses: appleboy/scp-action@master
         with:
@@ -39,7 +39,7 @@ jobs:
           source: "docker-compose.yaml"
           target: "~/app"
       
-      - name: Configure Nexus via API
+      - name: Start Nexus Service
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -48,15 +48,3 @@ jobs:
           script: |
             cd ~/app
             docker-compose up -d nexus
-            echo "Waiting for Nexus to start..."
-            while [[ "$(curl -s -o /dev/null -w ''%{http_code}'' http://localhost:8081/)" != "200" ]]; do sleep 5; done
-            
-            echo "Nexus is up. Configuring..."
-            sleep 20
-            
-            INITIAL_PASSWORD=$(sudo docker exec nexus cat /nexus-data/admin.password)
-            
-            curl -u "admin:$INITIAL_PASSWORD" -X PUT -H "Content-Type: text/plain" --data "${{ secrets.NEXUS_PASSWORD }}" "http://localhost:8081/service/rest/v1/security/users/admin/change-password"
-            
-            REPO_CONFIG='{"name": "docker-repo","online": true,"storage": {"blobStoreName": "default","strictContentTypeValidation": true,"writePolicy": "allow_once"},"docker": {"v1Enabled": false,"forceBasicAuth": true,"httpPort": 8082}}'
-            curl -u "${{ secrets.NEXUS_USERNAME }}:${{ secrets.NEXUS_PASSWORD }}" -X POST -H "Content-Type: application/json" --data "$REPO_CONFIG" "http://localhost:8081/service/rest/v1/repositories/docker/hosted"
