@@ -3,7 +3,7 @@ name: 'Bootstrap: Deploy Nexus Container'
 on:
   push:
     branches:
-      - main
+      - develop
 
 jobs:
   bootstrap:
